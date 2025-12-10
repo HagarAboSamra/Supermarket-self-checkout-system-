@@ -37,6 +37,13 @@ tax_rate(snack,0.10).
 tax_rate(cleaning,0.14).
 tax_rate(alcohol,0.20).
 
+% attendant(ID, Role).
+attendant(aat1, attendant).
+attendant(aat2, admin).
+attendant(aat3, admin).
+
+admin_authorized(ID) :- attendant(ID, admin).
+
 % loyalty(CardID, Points).
 loyalty(card_alex, 450).
 loyalty(card_sara, 1200).
@@ -47,3 +54,8 @@ loyalty(card_tom, 2500).
 tier(bronze, 0, 499, 0).
 tier(silver, 500, 1999, 2).
 tier(gold,   2000, 999999, 5).
+
+%pay(Method)
+pay(cash).
+pay(card).
+pay(e-wallet).
