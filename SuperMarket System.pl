@@ -1,3 +1,4 @@
+%% Hager %%
 %Items sold in the supermarket
 % item(item,price,weight,category)
 
@@ -59,6 +60,23 @@ tier(gold,   2000, 999999, 5).
 pay(cash).
 pay(card).
 pay(e-wallet).
+
+
+%% Ebrahim %%
+%  VERIFY AGE
+action(verify_age(Admin),
+       state(B,T,Sens,age_check_needed,L,Stock),
+       state(B,T,Sens,none,L,Stock)) :-
+    admin_authorized(Admin).
+
+%  CALCULATE TOTAL
+action(calculate_total,
+       state(B,T,Sens,none,L,Stock),
+       state(B,FinalTotal,Sens,none,L,Stock)) :-
+
+    calc_tax(B, TaxValue),
+    Subtotal is T + TaxValue,
+     FinalTotal = Subtotal.
 
 
 %% Anas %%
