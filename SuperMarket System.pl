@@ -164,4 +164,64 @@ action(remove(Item),
     NewCount is Count + 1,                                % Restore stock
     StockOut = [stock(Item, NewCount) | Rest],
     NewTotal is Total - Price.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Mohamed – Financials & Payment
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+% Calculate tax
+calc_tax([], 0).
+calc_tax([item(Item, Price, _)|Rest], TotalTax) :-
+    item(Item, _, _, Category),
+    tax_rate(Category, Rate),
+    ItemTax is Price * Rate,
+    calc_tax(Rest, RestTax),
+    TotalTax is ItemTax + RestTax.
+
+% Loyalty discount
+loyalty_discount(no_card, _, 0).
+loyalty_discount(card(CardID, Points), SubTotal, Discount) :-
+    loyalty(CardID, Points),
+    tier(_, Min, Max, Percent),
+    Points >= Min,
+    Points =< Max,
+    Discount is SubTotal * (Percent / 100).
+
+% Calculate final total
+action(calculate_total,
+    state(Basket, Total, none, Loyalty, Stock, pending),
+    state(Basket, FinalTotal, none, Loyalty, Stock, pending)
+) :-
+    Basket \= [],
+    calc_tax(Basket, Tax),
+    SubTotal is Total + Tax,
+    loyalty_discount(Loyalty, SubTotal, Discount),
+    FinalTotal is SubTotal - Discount.
+
+% Pay
+action(pay(Method),
+    state(B,T,none,L,S,pending),
+    state(B,T,none,L,S,completed)
+) :-
+    pay(Method).
+
+% Print receipt
+action(print_receipt,
+    state(Basket, Total, none, Loyalty, _, completed),
+    state(Basket, Total, none, Loyalty, _, completed)
+) :-
+    nl,
+    write('========= RECEIPT ========='), nl,
+    print_items(Basket),
+    write('Loyalty: '), write(Loyalty), nl,
+    write('Total Paid: '), write(Total), nl,
+    write('Payment Status: COMPLETED'), nl,
+    write('==========================='), nl.
+
+print_items([]).
+print_items([item(Item, Price, _)|Rest]) :-
+    write('- '), write(Item), write(' : '), write(Price), nl,
+    print_items(Rest).
+
+goal_state(state(Basket, FinalTotal, none, _, _, completed)) :-
+    Basket \= [],
+    FinalTotal > 0.
