@@ -225,3 +225,28 @@ print_items([item(Item, Price, _)|Rest]) :-
 goal_state(state(Basket, FinalTotal, none, _, _, completed)) :-
     Basket \= [],
     FinalTotal > 0.
+
+%% =====================================================
+%% Shahd %%
+%% Responsibility: Variable-weight (Non-barcoded) items
+%% Handles fruits priced per kilogram
+%% =====================================================
+
+action(weigh_produce(Item, Weight),
+       state(Basket, Total, none, Loyalty, StockIn, PaymentStatus),
+       state(NewBasket, NewTotal, none, Loyalty, StockOut, PaymentStatus)) :-
+
+    % Ensure the item is a variable-priced fruit
+    item(Item, PricePerKg, variable, fruits),
+
+    % Calculate price based on weight (grams to kilograms)
+    NewPrice is PricePerKg * (Weight / 1000),
+
+    % Update total cost
+    NewTotal is Total + NewPrice,
+
+    % Add the weighed item (with calculated price) to the basket
+    NewBasket = [item(Item, NewPrice, Weight) | Basket],
+
+    % Decrease stock by one unit for each weighing operation
+    stock_check(Item, StockIn, StockOut).
