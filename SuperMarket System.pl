@@ -1,6 +1,8 @@
 :- discontiguous action/3.   % Allows action clauses to be spread out
 :- style_check(-singleton).  % Suppresses singleton variable warnings
-%% Hager %%
+
+%% Hagar %%
+
 %Items sold in the supermarket
 % item(item,price,weight,category)
 
