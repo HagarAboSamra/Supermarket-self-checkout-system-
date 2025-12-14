@@ -26,6 +26,9 @@ stock(banana,25).
 stock(chips,10).
 stock(chocolate,6).
 stock(soap,8).
+stock(cigarettes, 10).
+stock(rolling_tobacco, 5).
+stock(cigar_pack, 3).
 %taxes on sold stocks
 tax_rate(food,0.05).
 tax_rate(fruits,0.00).
@@ -58,10 +61,21 @@ initial_state(state([], 0, none, no_card, InitialStock, pending)) :-
     findall(stock(Item, Count), stock(Item, Count), InitialStock).
 %% Ebrahim %%
 %  VERIFY AGE
-action(verify_age(Admin),
-       state(B,T,Sens,age_check_needed,L,Stock),
-       state(B,T,Sens,none,L,Stock)) :-
-    admin_authorized(Admin).
+
+/* state(Basket, Total, none, Loyalty, StockIn, PaymentStatus),
+    state([item(Item, Price, Weight) | Basket],
+  */
+
+% Define legal age
+legal_age(18).
+
+% Action now takes a number (CustomerAge) instead of an Admin ID
+action(verify_age(CustomerAge),
+       state(Basket, Total, age_check_needed, Loyalty, Stock, PaymentStatus),
+       state(Basket, Total, none,             Loyalty, Stock, PaymentStatus)) :-
+    legal_age(Limit),
+    CustomerAge >= Limit.     % <--- Now it checks the number!
+
 %  CALCULATE TOTAL
 /*
 action(calculate_total,
@@ -74,17 +88,25 @@ action(calculate_total,
 */
 %% Anas %%
 % Helper predicate to check and update stock
+%% Anas %%
+
+% Helper predicate to check and update stock
 stock_check(Item, StockIn, StockOut) :-
     select(stock(Item, Count), StockIn, Rest),
-    Count > 0,                       % Ensure item is available
+    Count > 0,                        % Ensure item is available
     NewCount is Count - 1,
     StockOut = [stock(Item, NewCount) | Rest].
 
+% ---------------------------------------------------------
+% SCAN ACTIONS
+% ---------------------------------------------------------
+
+% 1. Scan Normal Item (Not Age Restricted)
 action(scan(Item),
     state(Basket, Total, none, Loyalty, StockIn, PaymentStatus),
     state([item(Item, Price, Weight) | Basket],
           NewTotal,
-          none,
+          none,                       % Status remains none
           Loyalty,
           StockOut,
           PaymentStatus)
@@ -94,11 +116,12 @@ action(scan(Item),
     stock_check(Item, StockIn, StockOut),
     NewTotal is Total + Price.
 
+% 2. Scan Age Restricted Item (Triggers Lock)
 action(scan(Item),
     state(Basket, Total, none, Loyalty, StockIn, PaymentStatus),
     state([item(Item, Price, Weight) | Basket],
           NewTotal,
-          age_check_needed,
+          age_check_needed,           % <--- SETS BLOCK
           Loyalty,
           StockOut,
           PaymentStatus)
@@ -108,18 +131,42 @@ action(scan(Item),
     stock_check(Item, StockIn, StockOut),
     NewTotal is Total + Price.
 
+% ---------------------------------------------------------
+% REMOVE ACTIONS
+% ---------------------------------------------------------
+
+% 1. Remove while Blocked (The Deadlock Fix)
+% If the system is waiting for age check, removing an item implies
+% the user is cancelling the restricted purchase. We reset status to 'none'.
 action(remove(Item),
-    state(Basket, Total, BlockedStatus, Loyalty, StockIn, PaymentStatus),
+    state(Basket, Total, age_check_needed, Loyalty, StockIn, PaymentStatus),
     state(NewBasket,
           NewTotal,
-          BlockedStatus,
+          none,                       % <--- RESETS BLOCK TO NONE
           Loyalty,
           StockOut,
           PaymentStatus)
 ) :-
-    select(item(Item, Price, Weight), Basket, NewBasket), % Remove item from basket
+    select(item(Item, Price, Weight), Basket, NewBasket), % Remove item
     select(stock(Item, Count), StockIn, Rest),
-    NewCount is Count + 1,                                % Restore stock
+    NewCount is Count + 1,            % Restore stock
+    StockOut = [stock(Item, NewCount) | Rest],
+    NewTotal is Total - Price.
+
+% 2. Remove Normal (Standard)
+% Standard removal when the system is not blocked.
+action(remove(Item),
+    state(Basket, Total, none, Loyalty, StockIn, PaymentStatus),
+    state(NewBasket,
+          NewTotal,
+          none,                       % Status remains none
+          Loyalty,
+          StockOut,
+          PaymentStatus)
+) :-
+    select(item(Item, Price, Weight), Basket, NewBasket), % Remove item
+    select(stock(Item, Count), StockIn, Rest),
+    NewCount is Count + 1,            % Restore stock
     StockOut = [stock(Item, NewCount) | Rest],
     NewTotal is Total - Price.
 
@@ -166,6 +213,7 @@ action(print_receipt,
     state(Basket, Total, none, Loyalty, _, completed),
     state(Basket, Total, none, Loyalty, _, completed)
 ) :-
+    Basket \= [],
     reverse(Basket, NiceOrder),  % Uses built-in reverse — works perfectly!
     nl,
     write('========= RECEIPT ========='), nl,
@@ -190,13 +238,13 @@ goal_state(state(Basket, FinalTotal, none, _, _, completed)) :-
 action(weigh_produce(Item, Weight),
        state(Basket, Total, none, Loyalty, StockIn, PaymentStatus),
        state(NewBasket, NewTotal, none, Loyalty, StockOut, PaymentStatus)) :-
-    
+
     % Ensure the item is a variable-priced fruit
     item(Item, PricePerKg, variable, fruits),
-    
+
     % Calculate price based on weight (grams to kilograms)
     NewPrice is PricePerKg * (Weight / 1000),
-    
+
     % Update total cost
 
     NewTotal is Total + NewPrice,
@@ -206,10 +254,11 @@ action(weigh_produce(Item, Weight),
     % Decrease stock by one unit for each weighing operation
     stock_check(Item, StockIn, StockOut).
 
-%% Ashraf _ Show current shopping basket
+%% Ashraf
+% Show current shopping basket
 action(show_basket,
-       state(Basket, Total, Blocked, Loyalty, _, _),
-       state(Basket, Total, Blocked, Loyalty, _, _)) :-
+       state(Basket, Total, Blocked, Loyalty, Stock, PaymentStatus), % <--- Captured variables
+       state(Basket, Total, Blocked, Loyalty, Stock, PaymentStatus)) :- % <--- Passed them through
     nl,
     write('=== CURRENT BASKET ==='), nl,
     print_items(Basket),
@@ -218,10 +267,22 @@ action(show_basket,
     write('======================'), nl.
 
 %% Example Queries:    
-/*
-initial_state(S0),action(scan(milk),S0,S1),action(scan(bread),S1,S2),action(calculate_total, S2, S3), action(pay(card), S3, S4), action(print_receipt, S4, _).
+/*Final Boss ;)
+initial_state(S0), S0 = state(_,_,_,_,Stock,_) , S1 = state([], 0, none, card(card_tom), Stock, pending), action(scan(cigar_pack), S1, S2), action(verify_age(30), S2, S3), action(scan(milk), S3, S4), action(calculate_total, S4, S5), action(pay(card), S5, S6), action(print_receipt, S6, _).
 */
 
-/*
+/* Standard Shopping
 initial_state(S0), action(scan(milk), S0, S1), action(scan(chips), S1, S2), action(calculate_total, S2, S3), action(pay(cash), S3, S4), action(print_receipt, S4, _).
+*/
+
+/*Age confirmed accepted
+initial_state(S0), action(scan(cigarettes), S0, S1), action(verify_age(20), S1, S2), action(calculate_total, S2, S3), action(pay(card), S3, S4), action(print_receipt, S4, _).
+*/
+
+/*Weight
+initial_state(S0), action(weigh_produce(apple, 1500), S0, S1), action(scan(bread), S1, S2), action(calculate_total, S2, S3), action(pay(cash), S3, S4), action(print_receipt, S4, _).
+*/
+
+/*Show_basket
+initial_state(S0), action(scan(milk), S0, S1), action(scan(bread), S1, S2), action(show_basket, S2, S3), action(scan(cigarettes), S3, S4), action(verify_age(20), S4, S5), action(calculate_total, S5, S6), action(pay(cash), S6, S7), action(print_receipt, S7, _).
 */
